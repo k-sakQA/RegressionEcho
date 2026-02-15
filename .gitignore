@@ -1,0 +1,10 @@
+# 認証情報（Git管理しない）
+config/config.json
+storage/
+
+# レポート（自動生成）
+playwright-report/
+test-results/
+
+# 依存関係
+node_modules/
