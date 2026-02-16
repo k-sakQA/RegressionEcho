@@ -64,4 +64,19 @@ describe('test-executor', () => {
     expect(cmd).toContain('TC001.spec.ts');
     expect(cmd).toContain('TC002.spec.ts');
   });
+
+  test('Playwright設定にbaseURLが含まれる', () => {
+    const executor = new TestExecutor(testsDir, tmpDir);
+    const authPath = path.join(tmpDir, 'storage', 'auth.json');
+
+    const configPath = executor.generatePlaywrightConfig({
+      authPath,
+      timeout: 30000,
+      baseURL: 'https://hotel-example-site.takeyaqa.dev/ja/reserve.html',
+    });
+
+    const configContent = fs.readFileSync(configPath, 'utf-8');
+    expect(configContent).toContain('https://hotel-example-site.takeyaqa.dev/ja/reserve.html');
+    expect(configContent).toContain('baseURL');
+  });
 });

@@ -9,7 +9,7 @@ describe('claude-client', () => {
       purpose: '100円ガチャ購入で通貨10個増加確認',
       precondition: 'ログイン済み・通貨100個以上保有',
       expected: '購入前後で通貨が10個増加していること',
-    });
+    }, 'https://hotel-example-site.takeyaqa.dev/ja/reserve.html');
 
     expect(prompt).toContain('TC001');
     expect(prompt).toContain('100円ガチャ購入で通貨10個増加確認');
@@ -17,6 +17,7 @@ describe('claude-client', () => {
     expect(prompt).toContain('購入前後で通貨が10個増加していること');
     expect(prompt).toContain('Playwrightテストコード生成の専門家');
     expect(prompt).toContain('TypeScriptコードのみを出力');
+    expect(prompt).toContain('https://hotel-example-site.takeyaqa.dev/ja/reserve.html');
   });
 
   test('APIレスポンスからコードを抽出できる', () => {
