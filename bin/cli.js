@@ -122,7 +122,7 @@ function createProgram(projectDir) {
       const generator = new TestGenerator(claudeClient, path.join(projectDir, 'tests'));
 
       console.log('テストスクリプトを生成中...');
-      const results = await generator.generate(testCases);
+      const results = await generator.generate(testCases, config.testUrl);
 
       let successCount = 0;
       for (const result of results) {
@@ -164,6 +164,7 @@ function createProgram(projectDir) {
       const result = await executor.run(filterIds, {
         authPath: auth.getAuthPath(),
         timeout: config.playwright.timeout,
+        baseURL: config.testUrl,
       });
 
       if (result.testCount > 0) {

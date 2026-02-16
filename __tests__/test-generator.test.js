@@ -82,6 +82,24 @@ describe('test-generator', () => {
     expect(results[1].error).toBeDefined();
   });
 
+  test('generateTestCodeにtestUrlが渡される', async () => {
+    const mockClaudeClient = {
+      generateTestCode: jest.fn().mockResolvedValue("test('TC001', async () => {});"),
+    };
+
+    const generator = new TestGenerator(mockClaudeClient, testsDir);
+    const testUrl = 'https://example.com/test';
+
+    await generator.generate([
+      { testId: 'TC001', purpose: '目的', precondition: '前提', expected: '期待' },
+    ], testUrl);
+
+    expect(mockClaudeClient.generateTestCode).toHaveBeenCalledWith(
+      expect.objectContaining({ testId: 'TC001' }),
+      testUrl
+    );
+  });
+
   test('testsディレクトリが存在しない場合は自動作成', async () => {
     const mockClaudeClient = {
       generateTestCode: jest.fn().mockResolvedValue("test('TC001', async () => {});"),
