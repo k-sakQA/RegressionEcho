@@ -61,4 +61,67 @@ describe('auth', () => {
     const auth = new AuthManager(path.join(tmpDir, 'storage'));
     expect(() => auth.loadAuthState()).toThrow('認証状態が見つかりません');
   });
+
+  test('/home 初回ダイアログがある場合は閉じる', async () => {
+    const waitFor = jest.fn().mockResolvedValue();
+    const click = jest.fn().mockResolvedValue();
+    const first = jest.fn(() => ({ waitFor, click }));
+    const locator = jest.fn(() => ({ first }));
+
+    const page = {
+      url: jest.fn(() => 'https://development.pocket-heroes.net/home'),
+      locator,
+    };
+
+    const auth = new AuthManager(path.join(tmpDir, 'storage'));
+    await auth.dismissInitialHomeDialogIfPresent(page);
+
+    expect(locator).toHaveBeenCalledWith('button:has(img[src="/images/ui/cross.svg"])');
+    expect(waitFor).toHaveBeenCalledWith({ state: 'visible', timeout: 3000 });
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  test('/home 以外では初回ダイアログを操作しない', async () => {
+    const locator = jest.fn();
+    const page = {
+      url: jest.fn(() => 'https://development.pocket-heroes.net/shop'),
+      locator,
+    };
+
+    const auth = new AuthManager(path.join(tmpDir, 'storage'));
+    await auth.dismissInitialHomeDialogIfPresent(page);
+
+    expect(locator).not.toHaveBeenCalled();
+  });
+
+  test('期待パスは testUrl から解決できる', () => {
+    const auth = new AuthManager(path.join(tmpDir, 'storage'));
+    const expectedPath = auth.resolveExpectedPath('https://development.pocket-heroes.net/home', {});
+    expect(expectedPath).toBe('/home');
+  });
+
+  test('期待パスは check-url が優先される', () => {
+    const auth = new AuthManager(path.join(tmpDir, 'storage'));
+    const expectedPath = auth.resolveExpectedPath('https://development.pocket-heroes.net/home', { urlIncludes: '/custom' });
+    expect(expectedPath).toBe('/custom');
+  });
+
+  test('認証完了待機はポーリングで到達を検知する', async () => {
+    const urls = [
+      'https://development.pocket-heroes.net/auth/callback',
+      'https://development.pocket-heroes.net/home',
+    ];
+    let idx = 0;
+
+    const page = {
+      url: jest.fn(() => urls[Math.min(idx, urls.length - 1)]),
+      waitForTimeout: jest.fn(async () => {
+        idx += 1;
+      }),
+    };
+
+    const auth = new AuthManager(path.join(tmpDir, 'storage'));
+    await expect(auth.waitForExpectedUrlByPolling(page, '/home', 20000, 5000)).resolves.toBeUndefined();
+    expect(page.waitForTimeout).toHaveBeenCalledTimes(1);
+  });
 });

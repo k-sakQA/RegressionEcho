@@ -18,6 +18,8 @@ describe('claude-client', () => {
     expect(prompt).toContain('Playwrightテストコード生成の専門家');
     expect(prompt).toContain('TypeScriptコードのみを出力');
     expect(prompt).toContain('https://hotel-example-site.takeyaqa.dev/ja/reserve.html');
+    expect(prompt).toContain("import { gotoHomeForScenario } from './scenario-home';");
+    expect(prompt).toContain('await gotoHomeForScenario(page);');
   });
 
   test('APIレスポンスからコードを抽出できる', () => {

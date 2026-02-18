@@ -1,7 +1,8 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { createProgram } = require('../bin/cli');
+const { createProgram, resolveAuthVerification, loadSelectorCatalog, resolveRunFilterIds } = require('../bin/cli');
+const { TestExecutor } = require('../lib/test-executor');
 
 describe('CLI', () => {
   let tmpDir;
@@ -82,5 +83,97 @@ describe('CLI', () => {
         process.env.ANTHROPIC_API_KEY = originalEnv;
       }
     }
+  });
+
+  test('resolveAuthVerification は config の設定を使う', () => {
+    const verification = resolveAuthVerification({
+      authVerification: {
+        enabled: true,
+        urlIncludes: '/home',
+        visibleSelectors: ['[data-testid="hero-home"]'],
+        timeoutMs: 12000,
+        pollIntervalMs: 5000,
+      },
+    }, {});
+
+    expect(verification.enabled).toBe(true);
+    expect(verification.urlIncludes).toBe('/home');
+    expect(verification.visibleSelectors).toEqual(['[data-testid="hero-home"]']);
+    expect(verification.timeoutMs).toBe(12000);
+    expect(verification.pollIntervalMs).toBe(5000);
+  });
+
+  test('resolveAuthVerification は CLI オプションを優先する', () => {
+    const verification = resolveAuthVerification(
+      { authVerification: { enabled: true, urlIncludes: '/old', visibleSelectors: ['.old'] } },
+      { checkUrl: '/home', checkSelector: ['[data-testid="new"]'], checkTimeout: 5000, checkInterval: 4000 }
+    );
+
+    expect(verification.enabled).toBe(true);
+    expect(verification.urlIncludes).toBe('/home');
+    expect(verification.visibleSelectors).toEqual(['[data-testid="new"]']);
+    expect(verification.timeoutMs).toBe(5000);
+    expect(verification.pollIntervalMs).toBe(4000);
+  });
+
+  test('resolveAuthVerification は skip 指定で無効化する', () => {
+    const verification = resolveAuthVerification(
+      { authVerification: { enabled: true, urlIncludes: '/home', visibleSelectors: ['.x'] } },
+      { skipCheck: true }
+    );
+    expect(verification.enabled).toBe(false);
+  });
+
+  test('loadSelectorCatalog は既定パスの JSON を読み込む', () => {
+    const storageDir = path.join(tmpDir, 'storage');
+    fs.mkdirSync(storageDir, { recursive: true });
+    const catalog = { pages: [{ path: '/home', selectors: [] }] };
+    fs.writeFileSync(path.join(storageDir, 'selectors.json'), JSON.stringify(catalog));
+
+    const loaded = loadSelectorCatalog(tmpDir);
+    expect(loaded.pages[0].path).toBe('/home');
+  });
+
+  test('run --from で指定ID以降の順序を取得できる', () => {
+    const testsDir = path.join(tmpDir, 'tests');
+    fs.mkdirSync(testsDir, { recursive: true });
+    fs.writeFileSync(path.join(testsDir, '1.spec.ts'), '');
+    fs.writeFileSync(path.join(testsDir, '2.spec.ts'), '');
+    fs.writeFileSync(path.join(testsDir, '10.spec.ts'), '');
+
+    const executor = new TestExecutor(testsDir, tmpDir);
+    const ids = executor.listTestFiles().map((f) => f.replace('.spec.ts', ''));
+    const fromIndex = ids.indexOf('2');
+
+    expect(fromIndex).toBeGreaterThanOrEqual(0);
+    expect(ids.slice(fromIndex)).toEqual(['2', '10']);
+  });
+
+  test('resolveRunFilterIds は --scenario 未指定引数で全件を返す', () => {
+    const executor = {
+      listTestFiles: () => ['1.spec.ts', '2.spec.ts', '3.spec.ts'],
+    };
+
+    const resolved = resolveRunFilterIds(executor, [], { scenario: true });
+    expect(resolved).toEqual(['1', '2', '3']);
+  });
+
+  test('resolveRunFilterIds は --scenario のID順を維持する', () => {
+    const executor = {
+      listTestFiles: () => ['1.spec.ts', '2.spec.ts', '3.spec.ts'],
+    };
+
+    const resolved = resolveRunFilterIds(executor, [], { scenario: '3,1' });
+    expect(resolved).toEqual(['3', '1']);
+  });
+
+  test('resolveRunFilterIds は --scenario の未知IDでエラー', () => {
+    const executor = {
+      listTestFiles: () => ['1.spec.ts', '2.spec.ts', '3.spec.ts'],
+    };
+
+    expect(() => resolveRunFilterIds(executor, [], { scenario: '2,99' })).toThrow(
+      'scenario に存在しないテストIDがあります: 99'
+    );
   });
 });

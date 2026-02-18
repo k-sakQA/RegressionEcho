@@ -43,6 +43,17 @@ describe('test-executor', () => {
     expect(files).toContain('TC003.spec.ts');
   });
 
+  test('フィルタ指定順を維持できる', () => {
+    fs.writeFileSync(path.join(testsDir, '1.spec.ts'), 'test code');
+    fs.writeFileSync(path.join(testsDir, '2.spec.ts'), 'test code');
+    fs.writeFileSync(path.join(testsDir, '3.spec.ts'), 'test code');
+
+    const executor = new TestExecutor(testsDir, tmpDir);
+    const files = executor.listTestFiles(['3', '1']);
+
+    expect(files).toEqual(['3.spec.ts', '1.spec.ts']);
+  });
+
   test('テストディレクトリが空の場合は空配列', () => {
     const executor = new TestExecutor(testsDir, tmpDir);
     const files = executor.listTestFiles();
@@ -65,6 +76,29 @@ describe('test-executor', () => {
     expect(cmd).toContain('TC002.spec.ts');
   });
 
+  test('run時にreuseContext=trueなら環境変数を付与する', async () => {
+    fs.writeFileSync(path.join(testsDir, '1.spec.ts'), 'test code');
+
+    const childProcess = require('child_process');
+    const execSpy = jest.spyOn(childProcess, 'execSync').mockImplementation(() => Buffer.from(''));
+
+    try {
+      const executor = new TestExecutor(testsDir, tmpDir);
+      await executor.run(undefined, {
+        authPath: path.join(tmpDir, 'storage', 'auth.json'),
+        timeout: 30000,
+        baseURL: 'https://development.pocket-heroes.net/home',
+        reuseContext: true,
+      });
+
+      expect(execSpy).toHaveBeenCalled();
+      const command = execSpy.mock.calls[0][0];
+      expect(command).toContain('PW_TEST_REUSE_CONTEXT=1 npx playwright test');
+    } finally {
+      execSpy.mockRestore();
+    }
+  });
+
   test('Playwright設定にbaseURLが含まれる', () => {
     const executor = new TestExecutor(testsDir, tmpDir);
     const authPath = path.join(tmpDir, 'storage', 'auth.json');
@@ -78,5 +112,39 @@ describe('test-executor', () => {
     const configContent = fs.readFileSync(configPath, 'utf-8');
     expect(configContent).toContain('https://hotel-example-site.takeyaqa.dev/ja/reserve.html');
     expect(configContent).toContain('baseURL');
+    expect(configContent).toContain('globalSetup');
+    expect(configContent).toContain('headless: false');
+
+    const globalSetupPath = path.join(tmpDir, 'playwright.global-setup.js');
+    expect(fs.existsSync(globalSetupPath)).toBe(true);
+    const globalSetupContent = fs.readFileSync(globalSetupPath, 'utf-8');
+    expect(globalSetupContent).toContain('pollIntervalMs = 5000');
+    expect(globalSetupContent).toContain('firstHomeDialogCloseButtonSelector');
+    expect(globalSetupContent).toContain('genericHomeDialogSelector');
+    expect(globalSetupContent).toContain('openDialogOkSelector');
+    expect(globalSetupContent).toContain('context.storageState({ path:');
+  });
+
+  test('globalSetupに認証到達パスとポーリング間隔を反映できる', () => {
+    const executor = new TestExecutor(testsDir, tmpDir);
+    const authPath = path.join(tmpDir, 'storage', 'auth.json');
+
+    executor.generatePlaywrightConfig({
+      authPath,
+      timeout: 30000,
+      baseURL: 'https://development.pocket-heroes.net/home',
+      authReadyPath: '/home',
+      authPollIntervalMs: 5000,
+      authReadyTimeout: 45000,
+      headless: true,
+    });
+
+    const globalSetupPath = path.join(tmpDir, 'playwright.global-setup.js');
+    const globalSetupContent = fs.readFileSync(globalSetupPath, 'utf-8');
+    expect(globalSetupContent).toContain("const expectedPath = '/home'");
+    expect(globalSetupContent).toContain('const pollIntervalMs = 5000');
+    expect(globalSetupContent).toContain('const timeoutMs = 45000');
+    expect(globalSetupContent).toContain('dialog.ModalDialogBox_dialogBox__8_dsu.undefined');
+    expect(globalSetupContent).toContain('chromium.launch({ headless: true })');
   });
 });

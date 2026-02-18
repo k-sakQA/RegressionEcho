@@ -8,3 +8,6 @@ test-results/
 
 # 依存関係
 node_modules/
+
+# macOSメタファイル
+.DS_Store

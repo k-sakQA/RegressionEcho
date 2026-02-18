@@ -1,14 +1,14 @@
 # RegressionEcho
 
-リグレッションテストを効率化するCLIツール。複数段階認証が必要な環境でも、テストケースCSVから自動でPlaywrightテストを生成・実行できます。
+リグレッションテストを効率化するCLIツール。複数段階認証が必要な環境で、手動突破後に認証状を利用してテストケースCSVから自動でPlaywrightテストを生成・実行することを想定しています。
 
 ## 特徴
 
-- 🔐 **認証状態の保存・再利用** - IAP、Okta等の多段階認証を一度突破すれば、以降は自動で認証状態を利用
-- 🤖 **AI駆動のテスト生成** - Claude APIを使用して、テストケースCSVから自動でPlaywrightテストコードを生成
-- 🔄 **リグレッションテスト最適化** - 一度生成したテストスクリプトを繰り返し実行（毎回AI呼び出し不要）
-- 📊 **見やすいレポート** - Playwright標準のHTMLレポートで結果を確認
-- 🎯 **QA担当者向け** - コーディング不要、コマンド実行のみで完結
+- **認証状態の保存・再利用** - IAP、Okta等の多段階認証を一度突破すれば、以降は自動で認証状態を利用
+- **AI駆動のテスト生成** - Claude APIを使用して、テストケースCSVから自動でPlaywrightテストコードを生成
+- **リグレッションテスト最適化** - 一度生成したテストスクリプトを繰り返し実行（毎回AI呼び出し不要）
+- **見やすいレポート** - Playwright標準のHTMLレポートで結果を確認
+- **QA担当者向け** - コーディング不要、コマンド実行のみで完結
 
 ## 必要な環境
 
@@ -45,7 +45,16 @@ playwright-regression init
     "headless": false,
     "timeout": 30000
   },
-  "testUrl": "https://your-test-environment.example.com"
+  "testUrl": "https://your-test-environment.example.com",
+  "authVerification": {
+    "enabled": false,
+    "urlIncludes": "/home",
+    "visibleSelectors": [
+      "[data-testid=\"home-root\"]"
+    ],
+    "timeoutMs": 15000,
+    "pollIntervalMs": 5000
+  }
 }
 ```
 
@@ -57,6 +66,18 @@ playwright-regression auth
 
 - ブラウザが起動するので、手動で認証を完了してください（IAP → Okta → JリーグID等）
 - 認証完了後、Enterキーを押すと認証状態が保存されます
+- `authVerification.enabled=true` の場合は、URL到達とセレクタ可視を検証してから保存します
+
+例（サービス固有チェックをCLIオプションで差し込み）:
+
+```bash
+playwright-regression auth --check-url /home --check-selector '[data-testid="hero-home"]'
+```
+
+- URL検証は既定で5秒間隔ポーリング（`pollIntervalMs`）で実施します
+- CLIからは `--check-interval 5000` で上書きできます
+
+- 汎用利用したい場合は `--skip-check` で検証を無効化できます
 
 ### 3. テストケースCSVの準備
 
@@ -87,6 +108,16 @@ playwright-regression generate testcases.csv
 playwright-regression generate testcases.csv --only TC001,TC003
 ```
 
+DOM実測セレクタを使って生成精度を上げる場合:
+
+```bash
+# 認証済み状態でDOMを実測
+playwright-regression discover-selectors /home /shop
+
+# 実測セレクタを入力にして生成
+playwright-regression generate testcases.csv --selectors storage/selectors.json
+```
+
 ### 5. テストの実行
 
 ```bash
@@ -95,6 +126,13 @@ playwright-regression run
 
 # 特定のテストのみ実行
 playwright-regression run TC001 TC003
+
+# シナリオ実行（1 workerで指定順に実行）
+playwright-regression run --scenario
+playwright-regression run --scenario TC001,TC002,TC003
+
+# 指定IDから末尾まで実行
+playwright-regression run --from TC010
 ```
 
 ### 6. 結果の確認
@@ -112,10 +150,11 @@ playwright-regression report
 ```bash
 playwright-regression init          # 1. 初期設定
 # config/config.json にAPIキーを設定
-playwright-regression auth          # 2. 認証状態を保存
-playwright-regression generate testcases.csv  # 3. テストスクリプト生成
-playwright-regression run           # 4. テスト実行・動作確認
-git add tests/ && git commit        # 5. テストスクリプトをGit管理
+playwright-regression auth --check-url /home --check-selector '[data-testid="hero-home"]'  # 2. 認証状態を保存
+playwright-regression discover-selectors /home /shop  # 3. DOM実測セレクタ収集
+playwright-regression generate testcases.csv --selectors storage/selectors.json  # 4. テスト生成
+playwright-regression run           # 5. テスト実行・動作確認
+git add tests/ storage/selectors.json && git commit  # 6. 生成物をGit管理
 ```
 
 ### 日常のリグレッション実行
@@ -124,6 +163,24 @@ git add tests/ && git commit        # 5. テストスクリプトをGit管理
 playwright-regression run           # テスト実行
 playwright-regression report        # 結果確認
 ```
+
+### シナリオ実行（順序保証が必要な回帰）
+
+```bash
+playwright-regression run --scenario
+```
+
+- UIフローが長いテストは、`--scenario`で順序通りに実行する運用を推奨します
+- シナリオ実行時は内部的に1 workerで実行され、前段結果を後段で参照しやすくなります
+
+### 単体実行（ピンポイント確認）
+
+```bash
+playwright-regression run TC001
+```
+
+- 単体実行では前段テストの共有状態が存在しないため、テストは自己完結（必要な前提を自分で準備）させてください
+- 外部決済や認証画面が介在する場合は、待機時間・遷移待ち・フォールバック操作を実装すると安定します
 
 ### テストケース変更時
 
@@ -138,9 +195,10 @@ playwright-regression run TC002     # 動作確認
 | コマンド | 説明 |
 |---------|------|
 | `init` | 初期設定（設定ファイル生成・ディレクトリ作成） |
-| `auth` | 認証状態の保存 |
-| `generate <csv> [--only テストID,...]` | CSVからテストスクリプト生成 |
-| `run [testIds...]` | テスト実行 |
+| `auth [--check-url ... --check-selector ... --skip-check]` | 認証状態の保存（任意の到達検証付き） |
+| `discover-selectors [paths...]` | 認証済みページのDOMを実測しセレクタJSONを生成 |
+| `generate <csv> [--only テストID,...] [--selectors path]` | CSVからテスト生成（実測セレクタ入力に対応） |
+| `run [testIds...] [--scenario [ids]] [--from testId]` | テスト実行（通常/順序実行/途中再開） |
 | `report` | レポート表示 |
 
 ## ディレクトリ構成
@@ -151,6 +209,7 @@ RegressionEcho/
 │   └── config.json         # 設定ファイル（APIキー等）
 ├── storage/
 │   └── auth.json           # 認証状態（自動生成）
+│   └── selectors.json      # DOM実測セレクタ（任意）
 ├── tests/                  # 生成されたテストスクリプト
 │   ├── TC001.spec.ts
 │   ├── TC002.spec.ts
@@ -194,6 +253,7 @@ playwright-regression auth  # 再認証
 - 認証状態が有効か確認してください
 - `config.json`の`testUrl`が正しいか確認してください
 - 生成されたテストコードをレビューし、必要に応じて修正してください
+- 単体実行で失敗する場合は、前段テスト依存（共有状態不足）の可能性があります。`--scenario` での再現確認か、対象テストの自己完結化を行ってください
 
 ## 詳細仕様
 
